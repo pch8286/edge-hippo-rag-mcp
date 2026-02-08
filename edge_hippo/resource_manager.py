@@ -14,6 +14,7 @@ class ResourceManager:
         "low": {"alpha": 0.05, "n_max": 2000},
         "mid": {"alpha": 0.10, "n_max": 5000},
         "high": {"alpha": 0.20, "n_max": 10000},
+        "max": {"alpha": 1.0, "n_max": 1000000}, # Uncapped (Infinite) budget
     }
 
     def __new__(cls):
@@ -56,8 +57,10 @@ class ResourceManager:
             return self.PROFILES["low"].copy()
         elif total_mb < 8500: # RPi 5 8GB is ~8100MB
             return self.PROFILES["mid"].copy()
-        else:
+        elif total_mb < 16500: # Standard 16GB
             return self.PROFILES["high"].copy()
+        else: # High-end hardware (>16GB)
+            return self.PROFILES["max"].copy()
 
     def _is_zram_swap(self) -> bool:
         """Check if any swap device is zram."""
