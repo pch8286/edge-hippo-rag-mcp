@@ -23,3 +23,5 @@ tests/failure.log
 # Conductor & Agent files
 GEMINI.md
 conductor/
+.agent/
+GEMINI.md
