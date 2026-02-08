@@ -1,0 +1,43 @@
+[project]
+name = "edge-hippo-rag-mcp"
+version = "0.1.0"
+description = "Lightweight Edge-Optimized GraphRAG MCP Server (HippoRAG 2 Architecture)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=0.1.0",
+    "gliner>=0.2.0",
+    "aiosqlite>=0.20.0",
+    "numpy>=1.26.0",
+    "python-igraph>=0.11.0",
+    "sentence-transformers>=3.0.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "scikit-learn>=1.3.0",
+    "sqlite-vec>=0.1.0",
+    "onnxruntime>=1.15.0",
+    "optimum>=1.13.0",
+    "psutil>=5.9.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.3.0",
+    "black>=24.0.0"
+]
+
+[project.scripts]
+hippo = "edge_hippo.cli:main"
+edge-hippo-server = "edge_hippo.server:main"
+
+[tool.setuptools.packages.find]
+include = ["edge_hippo*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

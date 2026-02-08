@@ -1,0 +1,58 @@
+from fastmcp import FastMCP
+from .hippo_engine import HippoEngine
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("server")
+mcp = FastMCP("EdgeHippoRAG")
+
+engine = HippoEngine()
+_initialized = False
+
+async def ensure_initialized():
+    global _initialized
+    if not _initialized:
+        await engine.initialize()
+        _initialized = True
+
+@mcp.tool()
+async def add_document(text: str) -> str:
+    """Add a text document to the Knowledge Graph.
+    Extracts entities and updates the graph structure.
+    """
+    await ensure_initialized()
+    try:
+        await engine.add_document(text)
+        return "Document processed and graph updated successfully."
+    except Exception as e:
+        logger.error(f"Error adding document: {e}")
+        return f"Error adding document: {str(e)}"
+
+@mcp.tool()
+async def search(query: str, session_id: str = "default") -> str:
+    """Search the Knowledge Graph using Personalized PageRank.
+    finds relevant passages based on entities in the query.
+    """
+    await ensure_initialized()
+    try:
+        result = await engine.search(query, session_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error searching: {e}")
+        return f"Error searching: {str(e)}"
+
+@mcp.resource("graph://stats")
+async def graph_stats() -> str:
+    """Get the current graph statistics (node/edge counts)."""
+    await ensure_initialized()
+    try:
+        stats = await engine.storage.verify_integrity()
+        return str(stats)
+    except Exception as e:
+        return f"Error fetching stats: {str(e)}"
+
+def main():
+    mcp.run()
+
+if __name__ == "__main__":
+    main()
