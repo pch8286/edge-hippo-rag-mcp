@@ -1,8 +1,11 @@
 # Edge Hippo RAG MCP
 
-A lightweight, edge-optimized GraphRAG MCP server implementing the **HippoRAG 2** architecture. Designed for Raspberry Pi 5 (8GB RAM).
+A lightweight, edge-optimized GraphRAG MCP server implementing the **HippoRAG 2** architecture. Initially designed for Raspberry Pi 5 (<8GB RAM).
 
-ㄲ
+Reference for implementation: 
+1. https://arxiv.org/pdf/2502.14802
+2. https://arxiv.org/pdf/2602.01965
+3. https://arxiv.org/pdf/2510.08958
 
 ## Features
 - **HippoRAG 2 Architecture:** Uses "Passage" and "Phrase" nodes with "Dense-Sparse Integration".
