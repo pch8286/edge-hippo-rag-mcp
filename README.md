@@ -113,3 +113,12 @@ You can find it at [`presets/openclaw.json`](presets/openclaw.json) in this repo
 
 ## 🏗️ Architecture & Optimization
 For detailed architecture decisions, data schema, and Raspberry Pi 5 specific optimizations, please refer to [TECH_SPEC.md](TECH_SPEC.md).
+
+## 📊 Performance Metrics (Raspberry Pi 5)
+*Real-time evaluation on `eval_scenarios.json`*
+
+Adaptive Fact Recall  |███████████░░░░░░░░░| 59%
+Context Drift Control  |█████████████░░░░░░░| 68%
+Token Compression  |░░░░░░░░░░░░░░░░░░░░| -3%
+Cross-Entity Linkage  |░░░░░░░░░░░░░░░░░░░░| 0%
+

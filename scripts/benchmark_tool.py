@@ -235,6 +235,83 @@ class ProfilingBenchmark:
         }
         logger.info(f"Startup: TTI={interactive_time - start_time:.4f}s ({peak_ram_init:.2f}MB), TTR={ready_time - start_time:.4f}s ({peak_ram_ready:.2f}MB)")
 
+    async def calculate_adaptive_recall(self, retrieved_chunks: List[str], relevant_chunks: List[str], used_nodes: int, max_nodes: int = 1500) -> float:
+        """
+        Score = (Relevant Intersect Retrieved / Total Relevant) * exp(-alpha * (Used / Max))
+        """
+        if not relevant_chunks:
+            return 0.0
+        
+        # Simple exact match or substring match for chunks
+        hits = 0
+        for rel in relevant_chunks:
+            for ret in retrieved_chunks:
+                if rel in ret or ret in rel: # Loose matching
+                    hits += 1
+                    break
+        
+        recall = hits / len(relevant_chunks)
+        alpha = 0.5
+        import math
+        penalty = math.exp(-alpha * (used_nodes / max_nodes))
+        return recall * penalty
+
+    def calculate_context_drift(self, result_vector: List[float], irrelevant_vectors: List[List[float]]) -> float:
+        """
+        Score = 1 - max(cos_sim(result, irrelevant_t))
+        """
+        if irrelevant_vectors is None or len(irrelevant_vectors) == 0:
+            return 1.0
+            
+        import numpy as np
+        
+        def cos_sim(a, b):
+            return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+            
+        max_sim = 0.0
+        for irr_vec in irrelevant_vectors:
+            sim = cos_sim(result_vector, irr_vec)
+            if sim > max_sim:
+                max_sim = sim
+                
+        return 1.0 - max_sim
+
+    def calculate_token_compression(self, prompt_tokens: int, raw_doc_tokens: int) -> float:
+        """
+        Score = 1 - (Prompt Tokens / Raw Document Tokens)
+        """
+        if raw_doc_tokens == 0:
+            return 0.0
+        return 1.0 - (prompt_tokens / raw_doc_tokens)
+
+    async def calculate_linkage_density(self, engine: HippoEngine) -> float:
+        """
+        Score = Valid Synonym Edges / Total Phrase Nodes
+        Synonym Edges are edges where both source and target are 'phrase' type.
+        """
+        async with engine.storage._get_conn() as db:
+            # Count phrase nodes
+            async with db.execute("SELECT count(*) FROM nodes WHERE type='phrase'") as cursor:
+                row = await cursor.fetchone()
+                phrase_nodes = row[0] if row else 0
+                
+            if phrase_nodes == 0:
+                return 0.0
+                
+            # Count synonym edges (Phrase -> Phrase)
+            query = """
+                SELECT count(*) 
+                FROM edges e
+                JOIN nodes ns ON e.source = ns.id
+                JOIN nodes nt ON e.target = nt.id
+                WHERE ns.type = 'phrase' AND nt.type = 'phrase'
+            """
+            async with db.execute(query) as cursor:
+                row = await cursor.fetchone()
+                synonym_edges = row[0] if row else 0
+                
+        return synonym_edges / phrase_nodes
+
     def generate_report(self):
         if not self.results["metrics"]:
             logger.warning("No metrics collected.")
@@ -270,17 +347,162 @@ class ProfilingBenchmark:
         
         logger.info(f"Priority Report saved to {md_path}")
 
+    async def run_comprehensive_eval(self, dataset_path: str):
+        logger.info(f"Starting Comprehensive Evaluation with {dataset_path}...")
+        
+        with open(dataset_path, "r") as f:
+            data = json.load(f)
+            
+        engine = HippoEngine()
+        await engine.initialize()
+        
+        # 1. Indexing
+        start_index = time.time()
+        docs = [item["text"] for item in data]
+        await engine.add_documents(docs, source="eval_bench")
+        await engine.optimize_synonyms(threshold=0.6)
+        end_index = time.time()
+        
+        # Metrics buckets
+        recall_scores = []
+        drift_scores = []
+        compression_scores = []
+        
+        total_queries = 0
+        
+        # Initialize embedding model for drift calculation (cosine sim)
+        try:
+            from sentence_transformers import SentenceTransformer
+            embedder = SentenceTransformer("intfloat/multilingual-e5-small")
+        except Exception as e:
+            logger.warning(f"Could not load independent embedder for drift calc: {e}")
+            embedder = None
+
+        for item in data:
+            relevant_chunks = [item["text"]] 
+            irrelevant_topics = item.get("irrelevant_topics", [])
+            irrelevant_vectors = []
+            if embedder and irrelevant_topics:
+                 irrelevant_vectors = embedder.encode(irrelevant_topics)
+
+            for query in item.get("expected_queries", []):
+                total_queries += 1
+                result_str = await engine.search(query)
+                
+                # 1. Adaptive Recall
+                used_nodes_est = len(result_str.split()) / 5 
+                score_recall = await self.calculate_adaptive_recall(
+                    retrieved_chunks=[result_str], 
+                    relevant_chunks=relevant_chunks,
+                    used_nodes=used_nodes_est,
+                    max_nodes=1500
+                )
+                recall_scores.append(score_recall)
+                
+                # 2. Context Drift
+                if embedder and irrelevant_vectors is not None:
+                    result_vec = embedder.encode(result_str)
+                    score_drift = self.calculate_context_drift(result_vec, irrelevant_vectors)
+                    drift_scores.append(score_drift)
+                else:
+                    drift_scores.append(1.0)
+                
+                # 3. Token Compression
+                prompt_tokens = len(result_str) / 4
+                raw_tokens = len(item["text"]) / 4
+                score_comp = self.calculate_token_compression(prompt_tokens, raw_tokens)
+                compression_scores.append(score_comp)
+        
+        # 4. Linkage Density (Global)
+        linkage_score = await self.calculate_linkage_density(engine)
+        
+        # Aggregation
+        avg_recall = sum(recall_scores) / len(recall_scores) if recall_scores else 0
+        avg_drift = sum(drift_scores) / len(drift_scores) if drift_scores else 0
+        avg_compression = sum(compression_scores) / len(compression_scores) if compression_scores else 0
+        
+        self.results["metrics"]["evaluation"] = {
+            "adaptive_recall": avg_recall,
+            "context_drift_control": avg_drift,
+            "token_compression": avg_compression,
+            "cross_entity_linkage": linkage_score,
+            "queries_processed": total_queries
+        }
+        
+        logger.info("Evaluation Complete:")
+        logger.info(f"- Adaptive Recall: {avg_recall:.2%}")
+        logger.info(f"- Drift Control: {avg_drift:.2%}")
+        logger.info(f"- Token Compression: {avg_compression:.2%}")
+        logger.info(f"- Linkage Density: {linkage_score:.2f} (Edges/Node)")
+        
+        self.update_readme_metrics()
+
+    def update_readme_metrics(self):
+        readme_path = Path(__file__).parent.parent / "README.md"
+        if not readme_path.exists():
+            logger.warning("README.md not found, skipping auto-update.")
+            return
+
+        with open(readme_path, "r") as f:
+            content = f.read()
+            
+        metrics = self.results["metrics"].get("evaluation", {})
+        if not metrics:
+            return
+            
+        updates = {
+            "Adaptive Fact Recall": metrics["adaptive_recall"],
+            "Context Drift Control": metrics["context_drift_control"],
+            "Token Compression": metrics["token_compression"],
+            "Cross-Entity Linkage": metrics["cross_entity_linkage"] 
+        }
+        
+        import re
+        
+        def generate_bar(percentage):
+            blocks = int(percentage * 20)
+            bar = "█" * blocks + "░" * (20 - blocks)
+            return f"|{bar}| {int(percentage * 100)}%"
+
+        new_content = content
+        for label, value in updates.items():
+            if label == "Cross-Entity Linkage":
+                norm_value = min(value / 2.5, 1.0)
+                bar_str = generate_bar(norm_value)
+            else:
+                bar_str = generate_bar(value)
+                
+            regex_line = re.compile(rf"({re.escape(label)}\s*)\|[█░]+\|\s*\d+%")
+            new_content = regex_line.sub(rf"\1 {bar_str}", new_content)
+        
+        if new_content != content:
+            with open(readme_path, "w") as f:
+                f.write(new_content)
+            logger.info("Updated README.md with new metrics.")
+
 async def main():
     parser = argparse.ArgumentParser(description="Edge-Hippo Profiling Benchmark Tool")
-    parser.add_argument("--scenario", choices=["synthetic", "medium", "complex", "stress", "all", "semantic"], default="synthetic", help="Benchmark scenario to run")
+    parser.add_argument("--scenario", choices=["synthetic", "medium", "complex", "stress", "all", "semantic", "eval"], default="synthetic", help="Benchmark scenario to run")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for indexing")
     args = parser.parse_args()
 
     benchmark = ProfilingBenchmark()
     
+    current_dir = Path(__file__).parent.parent
+
     try:
         data_file = "scripts/data/synthetic_small.json"
         
+        # Special Eval Mode
+        if args.scenario == "eval":
+            data_file = "scripts/data/eval_scenarios.json"
+            full_data_path = current_dir / data_file
+            if full_data_path.exists():
+                await benchmark.run_comprehensive_eval(str(full_data_path))
+            else:
+                logger.error(f"Eval dataset not found at {full_data_path}")
+            return
+
         # 1. Startup
         await benchmark.run_startup_benchmark()
         
@@ -316,3 +538,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
