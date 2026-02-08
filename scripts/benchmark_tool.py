@@ -365,6 +365,7 @@ class ProfilingBenchmark:
         
         # Metrics buckets
         recall_scores = []
+        raw_recall_scores = []
         drift_scores = []
         compression_scores = []
         
@@ -391,6 +392,17 @@ class ProfilingBenchmark:
                 
                 # 1. Adaptive Recall
                 used_nodes_est = len(result_str.split()) / 5 
+                
+                # Calculate Raw Recall first
+                hits = 0
+                for rel in relevant_chunks:
+                    for ret in [result_str]:
+                        if rel in ret or ret in rel:
+                            hits += 1
+                            break
+                raw_recall = hits / len(relevant_chunks) if relevant_chunks else 0.0
+                raw_recall_scores.append(raw_recall)
+
                 score_recall = await self.calculate_adaptive_recall(
                     retrieved_chunks=[result_str], 
                     relevant_chunks=relevant_chunks,
@@ -418,11 +430,13 @@ class ProfilingBenchmark:
         
         # Aggregation
         avg_recall = sum(recall_scores) / len(recall_scores) if recall_scores else 0
+        avg_raw_recall = sum(raw_recall_scores) / len(raw_recall_scores) if raw_recall_scores else 0
         avg_drift = sum(drift_scores) / len(drift_scores) if drift_scores else 0
         avg_compression = sum(compression_scores) / len(compression_scores) if compression_scores else 0
         
         self.results["metrics"]["evaluation"] = {
             "adaptive_recall": avg_recall,
+            "raw_recall": avg_raw_recall,
             "context_drift_control": avg_drift,
             "token_compression": avg_compression,
             "cross_entity_linkage": linkage_score,
@@ -430,6 +444,7 @@ class ProfilingBenchmark:
         }
         
         logger.info("Evaluation Complete:")
+        logger.info(f"- Raw Recall: {avg_raw_recall:.2%}")
         logger.info(f"- Adaptive Recall: {avg_recall:.2%}")
         logger.info(f"- Drift Control: {avg_drift:.2%}")
         logger.info(f"- Token Compression: {avg_compression:.2%}")

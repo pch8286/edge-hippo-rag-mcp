@@ -3,28 +3,56 @@ import sqlite3
 import json
 import logging
 import sqlite_vec
+import ctypes
+import os
+import ctypes.util
 from typing import List, Optional, Tuple, Dict, Any
 from contextlib import asynccontextmanager
 from .config import settings
 
 logger = logging.getLogger(__name__)
 
+def _register_sqlite_vec():
+    try:
+        lib_path = ctypes.util.find_library('sqlite3')
+        if not lib_path:
+            lib_path = 'libsqlite3.so.0'
+        sqlite_lib = ctypes.CDLL(lib_path)
+        
+        auto_ext = sqlite_lib.sqlite3_auto_extension
+        auto_ext.argtypes = [ctypes.c_void_p]
+        auto_ext.restype = ctypes.c_int
+        
+        vec_lib_path = sqlite_vec.loadable_path()
+        if not vec_lib_path.endswith(".so"):
+            vec_lib_path += ".so"
+            
+        if not os.path.exists(vec_lib_path):
+            vec_lib_path = vec_lib_path.replace(".so", ".so") 
+
+        vec_lib = ctypes.CDLL(vec_lib_path)
+        vec_init = vec_lib.sqlite3_vec_init
+        
+        res = auto_ext(ctypes.cast(vec_init, ctypes.c_void_p))
+        if res == 0:
+            logger.info("Successfully registered sqlite-vec via auto-extension.")
+            return True
+        else:
+            logger.warning(f"Failed to register sqlite-vec: Result code {res}")
+    except Exception as e:
+        logger.warning(f"SQLite extension workaround failed: {e}")
+    return False
+
+LOAD_EXTENSION_HACK_SUCCESS = _register_sqlite_vec()
+
 class GraphStorage:
     def __init__(self):
         self.db_path = settings.db_path
-        self.ext_path = sqlite_vec.loadable_path()
-        self.extension_loaded = False
+        self.extension_loaded = LOAD_EXTENSION_HACK_SUCCESS
 
     @asynccontextmanager
     async def _get_conn(self):
         async with aiosqlite.connect(self.db_path) as db:
-            try:
-                await db.enable_load_extension(True)
-                await db.load_extension(self.ext_path)
-                self.extension_loaded = True
-            except (AttributeError, Exception) as e:
-                self.extension_loaded = False
-                logger.warning(f"Failed to load SQLite extension: {e}. Vector search will be disabled.")
             yield db
 
     async def initialize(self):
@@ -143,18 +171,6 @@ class GraphStorage:
         """
         async with self._get_conn() as db:
             await db.execute("UPDATE nodes SET is_hub = 0")
-            
-            # Find degree threshold
-            # Subquery gets counts.
-            # Window function ntile or just math?
-            # SQLite doesn't have percentile_cont easily without extensions.
-            # We can select counts, fetch all, determine threshold in python for simplicity on RPi.
-            
-            # Count degrees for phrases (type='phrase')
-            # Assuming edges are stored directionally or bidirectionally? 
-            # add_document adds (passage->phrase) and (phrase->passage).
-            # So degree = count(*) in 'edges' where target=id (incoming from passages).
-            
             rows = await db.execute("""
                 SELECT target, COUNT(*) as degree 
                 FROM edges 
@@ -286,7 +302,6 @@ class GraphStorage:
                     "embedding": emb_list
                 })
 
-            # Fetch Edges within subgraph
             async with db.execute(f"""
                 SELECT source, target, weight 
                 FROM edges 
@@ -311,8 +326,6 @@ class GraphStorage:
             str_a = ",".join(map(str, group_a))
             str_b = ",".join(map(str, group_b))
             
-            # 1. Direct Connection Check
-            # Check A->B or B->A
             query_direct = f"""
                 SELECT 1 FROM edges 
                 WHERE (source IN ({str_a}) AND target IN ({str_b}))
@@ -322,8 +335,6 @@ class GraphStorage:
                 if await cursor.fetchone():
                     return True
             
-            # 2. Common Neighbor Check (1-hop shared)
-            # Find n where A->n AND B->n
             query_common = f"""
                 SELECT 1 
                 FROM edges e1
