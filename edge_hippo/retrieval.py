@@ -38,11 +38,9 @@ class PPRRetriever:
                 current_entity_ids.add(nid)
         t_db_seeds = time.time()
 
-        # Vector Search for Query Seeds
         if self.encoder:
             loop = asyncio.get_running_loop()
             query_prefixed = "query: " + query
-            # Handle sync/async encode
             if asyncio.iscoroutinefunction(self.encoder.encode):
                  query_vec_np = await self.encoder.encode(query_prefixed)
             else:
@@ -69,14 +67,9 @@ class PPRRetriever:
         history_entity_ids = set()
         history_scores = {}
         
-        # Determine effective decay factor via Drift Check
         effective_decay = 0.0
         
         if history_entities:
-            # Perform Topological Drift Check
-            # We pass names (history_entities) and names (seed_names)
-            # check_drift(storage, current, history)
-            # It returns True if Drift Detected (Disconnect)
             is_drift = await check_drift(self.storage, seed_names, history_entities)
             
             if not is_drift:
@@ -97,7 +90,6 @@ class PPRRetriever:
         if not all_seeds:
             return "No matching entities found.", []
 
-        # 2. Extract Ego-Graph with Dynamic Budget
         node_limit = resource_manager.calculate_node_budget()
         logger.info(f"Retrieval: Using dynamic node budget: {node_limit}")
         
@@ -162,13 +154,9 @@ class PPRRetriever:
             
         t_graph_build = time.time()
         
-        # Construct Reset Vector
-        # v_reset = (1 - lambda) * v_current + lambda * v_history
-        
         total_nodes = g.vcount()
         reset_vec = [0.0] * total_nodes
         
-        # A. Current Query Vector
         current_sum = sum(seed_scores.values()) if seed_scores else 1.0
         current_map = {} # idx -> prob
         
@@ -179,7 +167,6 @@ class PPRRetriever:
                     prob = seed_scores.get(nid, 1.0) / current_sum
                     current_map[idx] = prob
         
-        # B. History Vector
         history_sum = len(history_entity_ids) if history_entity_ids else 1.0
         history_map = {}
         
@@ -187,17 +174,12 @@ class PPRRetriever:
             for nid in history_entity_ids:
                 if nid in id_to_idx:
                     idx = id_to_idx[nid]
-                    prob = 1.0 / history_sum # Uniform for history? Or use scores? Uniform for now.
+                    prob = 1.0 / history_sum
                     history_map[idx] = prob
                     
-        # C. Combine
-        # If no history, lambda effectively 0 (or caller sets it 0)
-        # If no current (unlikely), full history?
         
         actual_decay = effective_decay if history_map else 0.0
         
-        # Re-normalize if needed
-        # We iterate all nodes and set value
         
         for i in range(total_nodes):
             val_c = current_map.get(i, 0.0)
@@ -206,10 +188,6 @@ class PPRRetriever:
             val = (1.0 - actual_decay) * val_c + actual_decay * val_h
             reset_vec[i] = val
             
-        # Verify L1 Norm (Debug)
-        # s = sum(reset_vec)
-        # if abs(s - 1.0) > 0.01:
-        #     logger.warning(f"PPR Reset vector sum {s} != 1.0")
 
         ppr_scores = g.personalized_pagerank(
             vertices=None,
@@ -240,14 +218,5 @@ class PPRRetriever:
              if content:
                  output.append(f"--- [Score: {score:.4f}] ---\n{content}\n")
 
-        # Return Entity IDs for next turn context (Top-K seeds? Or just query seeds?)
-        # Spec says: "Context Source (E_{t-1}): Use Previous Query Entities (Input Source)"
-        # So we return ids of current query entities.
-        
-        # We return the output string, but maybe we should return object?
-        # Standard implementation returns string.
-        # HippoEngine handles session update? Or Retriever?
-        # Let's keep Retriever pure and let Engine handle session update using seed_names/ids.
-        
         return "\n".join(output), list(seed_names)
 

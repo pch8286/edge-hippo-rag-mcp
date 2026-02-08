@@ -27,7 +27,7 @@ async def check_drift(storage: GraphStorage, current_entities: List[str], histor
             
     if not current_ids or not history_ids:
         return True
-        
+
     is_connected = await storage.check_connectivity(current_ids, history_ids)
     
     return not is_connected

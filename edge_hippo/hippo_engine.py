@@ -29,7 +29,6 @@ class PureOnnxEmbeddingWrapper:
         self.use_token_type_ids = "token_type_ids" in self.input_names
     
     def encode(self, sentences, batch_size=32, show_progress_bar=False, **kwargs):
-        # Normalize input to list
         is_single = False
         if isinstance(sentences, str):
             sentences = [sentences]
@@ -52,11 +51,8 @@ class PureOnnxEmbeddingWrapper:
             ort_inputs["token_type_ids"] = np.zeros_like(input_ids)
         
         outputs = self.session.run(None, ort_inputs)
-        # Output[0] is last_hidden_state
         last_hidden_state = outputs[0]
         
-        # NumPy Mean Pooling logic (Same as before)
-        # Shape: (batch, seq, dim)
         input_mask_expanded = np.expand_dims(attention_mask, axis=-1)
         input_mask_expanded = np.broadcast_to(input_mask_expanded, last_hidden_state.shape).astype(np.float32)
         
@@ -71,7 +67,7 @@ class PureOnnxEmbeddingWrapper:
         embeddings = embeddings / norm
         
         if is_single:
-            return embeddings[0] # Return (dim,) numpy array
+            return embeddings[0]
         
         return embeddings
 
@@ -106,19 +102,14 @@ class HippoEngine:
         """Background task to load heavy ML models."""
         loop = asyncio.get_running_loop()
         try:
-            # Load Entity Extractor (Run in executor)
             await loop.run_in_executor(None, self.extractor.load_model)
-            # logger.warning("NER Loading DISABLED for Benchmark Isolation Test")
             
-            # Load Embedding Model
             if settings.EMBEDDING_MODEL:
                 logger.info(f"Loading Embedding model: {settings.EMBEDDING_MODEL}")
                 
                 def _load_model_safe(model_name: str):
                     try:
-                        # 1. OPTIMIZED: Check for INT8 Quantized ONNX Model
                         from pathlib import Path
-                        # 1. OPTIMIZED: Check for INT8 Quantized ONNX Model (Using Config)
                         model_safe_name = model_name.split('/')[-1]
                         quantized_path = settings.QUANTIZED_MODEL_DIR / model_safe_name / "quantized"
                         
@@ -126,30 +117,22 @@ class HippoEngine:
                         
                         if quantized_path.exists():
                             logger.info(f"⚡ Loading Quantized INT8 Model from {quantized_path}...")
-                            # 1. OPTIMIZED: Pure ONNX Runtime (Cycle 2)
-                            # Remove optimum/transformers to save 3-4s startup time
                             import onnxruntime as ort
                             from tokenizers import Tokenizer
                             import numpy as np
                             
-                            # Load Tokenizer (Native Rust)
                             tokenizer_path = quantized_path / "tokenizer.json"
                             tokenizer = Tokenizer.from_file(str(tokenizer_path))
                             
-                            # Configure (Matches config.json)
-                            # Pad ID = 1 (<pad>) for XLM-R (multilingual-e5)
                             tokenizer.enable_padding(pad_id=1, pad_token="<pad>", length=512)
                             tokenizer.enable_truncation(max_length=512)
                             
-                            # Load ONNX Model
                             model_path = quantized_path / "model_quantized.onnx"
-                            # Use CPU provider
                             session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
                             
                             print("DEBUG: Pure ONNX loader success!")
                             return PureOnnxEmbeddingWrapper(session, tokenizer)
 
-                        # 2. STANDARD: Fallback to SentenceTransformer
                         logger.info("Quantized model not found. Using Standard SentenceTransformer.")
                         from sentence_transformers import SentenceTransformer
                         return SentenceTransformer(model_name)
@@ -163,7 +146,6 @@ class HippoEngine:
                         from sentence_transformers import SentenceTransformer
                         return SentenceTransformer(model_name)
 
-                # SentenceTransformer init is blocking
                 self.encoder = await loop.run_in_executor(
                     None, 
                     _load_model_safe, 
@@ -176,9 +158,6 @@ class HippoEngine:
             logger.info("Background model loading complete.")
         except Exception as e:
             logger.error(f"Failed to load models in background: {e}")
-            # We don't re-raise here to avoid crashing the background task immediately, 
-            # but _ensure_models will see the result? 
-            # Actually if we let it raise, the task.result() will raise.
             raise e
 
     async def _ensure_models(self) -> None:
@@ -236,28 +215,22 @@ class HippoEngine:
         chunks = self._chunk_text(text, settings.CHUNK_SIZE)
         
         for i, chunk in enumerate(chunks):
-            # 2. Extract Entities (Run async to not block)
             entities = await self.extractor.extract_entities(chunk)
             
-            # 3. Add Phrases and Edges
-            # Optimization: Batch Encode unique phrases in this chunk
             unique_phrases = list(set(ent['text'] for ent in entities))
             embeddings_map = {}
             
             if self.encoder and unique_phrases:
                 loop = asyncio.get_running_loop()
-                # Batch encode with PREFIX
                 prefixed_phrases = ["passage: " + p for p in unique_phrases]
                 embeddings_np = await loop.run_in_executor(
                     None, 
                     self.encoder.encode, 
                     prefixed_phrases
                 )
-                # Map back to text
                 for phrase, emb in zip(unique_phrases, embeddings_np):
                     embeddings_map[phrase] = emb.tolist()
 
-            # Encode Passage (Chunk)
             passage_embedding = None
             if self.encoder:
                 loop = asyncio.get_running_loop()
@@ -268,7 +241,6 @@ class HippoEngine:
                 )
                 passage_embedding = p_emb_np.tolist()
 
-            # 1. Add Passage
             passage_id = await self.storage.add_node(
                 node_type="passage", 
                 name=f"p_{source}_{i}",
@@ -281,7 +253,6 @@ class HippoEngine:
                 phrase_text = ent['text']
                 embedding = embeddings_map.get(phrase_text)
 
-                # Add Phrase Node (sqlite-vec handles embeddings)
                 phrase_id = await self.storage.add_node(
                     node_type="phrase",
                     name=phrase_text,
@@ -290,8 +261,6 @@ class HippoEngine:
                     embedding=embedding
                 )
                 
-                # Add Edges: Passage <-> Phrase
-                # Bidirectional containment logic, No implicit relations labels in DB
                 await self.storage.add_edge(passage_id, phrase_id, weight=1.0)
                 await self.storage.add_edge(phrase_id, passage_id, weight=1.0)
 
@@ -303,9 +272,7 @@ class HippoEngine:
         """
         await self._ensure_models()
         
-        # 1. Chunk All Texts
-        # We need to map chunk -> (source_doc_index, chunk_index)
-        all_chunks_map = [] # List of (chunk_text, doc_idx, chunk_idx)
+        all_chunks_map = []
         
         for doc_idx, text in enumerate(texts):
             chunks = self._chunk_text(text, settings.CHUNK_SIZE)
@@ -317,13 +284,9 @@ class HippoEngine:
 
         all_chunk_texts = [c[0] for c in all_chunks_map]
         
-        # 2. Batch Entity Extraction
-        # This is the heavy ML part
         logger.info(f"Extracting entities from {len(all_chunk_texts)} chunks...")
         entities_batch = await self.extractor.extract_entities_batch(all_chunk_texts)
         
-        # 3. Batch Embedding (Phrases)
-        # Collect all unique phrases across the entire batch
         unique_phrases = set()
         for batch_ents in entities_batch:
             for ent in batch_ents:

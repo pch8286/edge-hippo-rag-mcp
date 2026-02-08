@@ -81,7 +81,6 @@ class ResourceManager:
         if self._is_zram_swap():
             sm = psutil.swap_memory()
             zram_free_mb = sm.free / (1024 * 1024)
-            # Add 50% of free zram to effective pool
             effective_mb = available_mb + (zram_free_mb * 0.5)
             logger.debug(f"ZRAM detected. Effective Memory: {effective_mb:.1f}MB (Phys: {available_mb:.1f}MB, ZRAM_Free: {zram_free_mb:.1f}MB)")
             return effective_mb
