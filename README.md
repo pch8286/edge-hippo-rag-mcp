@@ -78,7 +78,23 @@ Weighted context from previous turns is automatically applied to `search` result
 - **Drift Control:** Automatically detects topic shifts and flushes context if the new query is topologically disconnected from history.
 - **Preserves Narrative:** Keeps relevant entities in the "Reset Vector" for PPR to maintain focus.
 
-## 🔌 Integrate with Claude Desktop
+## 🔌 Integrations
+
+### 1. Generic MCP Client
+To use Edge Hippo with any MCP-compliant agent (such as Cursor, Windsurf, or your own custom agent), add the following to your agent's configuration:
+
+```json
+{
+  "mcpServers": {
+    "edge-hippo": {
+      "command": "hippo",
+      "args": ["run"]
+    }
+  }
+}
+```
+
+### 2. Claude Desktop
 Add this to your `claude_desktop_config.json`:
 ```json
 {
@@ -91,13 +107,9 @@ Add this to your `claude_desktop_config.json`:
 }
 ```
 
-## Architecture Details
-1.  **Ingestion:** Text is chunked -> GLiNER extracts entities -> Stored in SQLite.
-2.  **Graph Construction:** Passages are linked to contained Phrases. Phrases are linked by synonymy (via `SentenceTransformers`) using vector similarity.
-3.  **Retrieval:** Use `python-igraph` to run PPR starting from query entities. Implements **Hub Trapping** and **Sink Node** logic for robust local retrieval.
+### 3. OpenClaw
+We provide a pre-configured preset for OpenClaw. 
+You can find it at [`presets/openclaw.json`](presets/openclaw.json) in this repository.
 
-## Raspberry Pi 5 Optimizations
-- **RAM:** Graph topology is loaded into `igraph` (C struct). Content stays on disk.
-- **Adaptive Node Budgeting:** Dynamically caps subgraph size based on available memory to prevent OOM.
-- **CPU:** GLiNER and SentenceTransformers models are small.
-- **Disk:** Uses `aiosqlite` for non-blocking DB access.
+## 🏗️ Architecture & Optimization
+For detailed architecture decisions, data schema, and Raspberry Pi 5 specific optimizations, please refer to [TECH_SPEC.md](TECH_SPEC.md).
