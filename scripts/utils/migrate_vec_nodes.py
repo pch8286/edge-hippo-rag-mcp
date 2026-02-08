@@ -2,6 +2,12 @@ import asyncio
 import aiosqlite
 import sqlite_vec
 import logging
+import sys
+from pathlib import Path
+
+# Add project root to sys.path
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
 from edge_hippo.config import settings
 
 logging.basicConfig(level=logging.INFO)
