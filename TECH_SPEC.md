@@ -1,17 +1,17 @@
 # Technical Specification: Edge-Hippo Optimizations
 
 ## Overview
-This document outlines the architecture and implementation details of the "Edge-Hippo" RAG engine, a variant of HippoRAG 2 optimized for resource-constrained edge devices (e.g., Raspberry Pi 5).
+Edge-Hippo is a variant of HippoRAG 2 optimized for the Raspberry Pi 5 and other resource-constrained devices. It focuses on low RAM usage and fast retrieval without needing a full-time graph in memory.
 
 ## Core Principles
-1.  **Entity-Centric**: The knowledge graph is primarily composed of Entities (Phrases) and Passages (Chunks). Relationships are implicit (co-occurrence) or unlabeled to save space.
-2.  **Edge-First**: Minimal RAM usage. No full-graph loading. Heavy processing (PPR) is done on on-demand subgraphs.
-3.  **Lightweight Vectors**: Uses `sqlite-vec` for in-process vector storage and similarity search, avoiding heavy external vector databases.
+- **Entity-Centric**: The knowledge graph uses Phrases (Entities) and Passages (Chunks). Relationships are implicit to keep storage requirements low.
+- **Edge-First**: Minimal RAM usage. No full-graph loading. Heavy processing is done on small, on-demand subgraphs.
+- **Lightweight Vectors**: Uses `sqlite-vec` for local vector storage and similarity search.
 
 ## Architecture Components
 
 ### 1. Data Schema (`edge_hippo/storage.py`)
-The data model is implemented in SQLite with the following tables:
+Stored in SQLite with three main tables:
 
 *   **`nodes` Table**
     *   `id` (INTEGER PK): Unique ID.
@@ -33,7 +33,6 @@ The data model is implemented in SQLite with the following tables:
     *   **Note**: No `relation` column. Edges represent undirected co-occurrence or containment.
 
 ### 2. HippoEngine (`edge_hippo/hippo_engine.py`)
-The central coordinator for ingestion### 2.1 Core Components
 1.  **Ingestion Engine:**
     *   **Chunking:** `RecursiveCharacterTextSplitter` ( LangChain).
     *   **Entity Extraction:** `GLiNER` (NuZero/Gliner-small).
@@ -78,16 +77,7 @@ The central coordinator for ingestion### 2.1 Core Components
     *   Runs PPR on the temporary graph, resetting probability mass to Seed Nodes.
 5.  **Ranking**: Sorts Passages by their Pagerank score.
 
-## Dependencies
-*   `aiosqlite`: Async SQLite interface.
-*   `sqlite-vec`: In-process vector search extension.
-*   `gliner`: Lightweight Named Entity Recognition.
-*   `sentence-transformers`: Text embedding (Fallback / Core for some paths).
-*   `onnxruntime`: Quantized Inference (Embeddings).
-*   `python-igraph`: Fast C-core graph algorithms.
-*   `numpy`: Numerical operations.
-
 ## Constraints
-*   **RAM**: < 4GB (Peak ~2.5GB due to GLiNER Native Loader).
-*   **Storage**: SQLite file.
-*   **Concurrency**: AsyncIO based.
+- **RAM**: Peak usage around 2.5GB (mostly GLiNER).
+- **Storage**: Single SQLite file.
+- **Concurrency**: Fully asynchronous.
