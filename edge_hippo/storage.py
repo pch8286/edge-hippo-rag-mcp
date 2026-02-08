@@ -337,3 +337,18 @@ class GraphStorage:
                     return True
                     
         return False
+
+    async def verify_integrity(self) -> Dict[str, Any]:
+        """Verify graph integrity and return stats."""
+        stats = {}
+        async with self._get_conn() as db:
+            async with db.execute("SELECT count(*) FROM nodes") as cursor:
+                stats["total_nodes"] = (await cursor.fetchone())[0]
+            async with db.execute("SELECT count(*) FROM edges") as cursor:
+                stats["total_edges"] = (await cursor.fetchone())[0]
+            async with db.execute("SELECT count(*) FROM nodes WHERE is_hub = 1") as cursor:
+                stats["hub_nodes"] = (await cursor.fetchone())[0]
+            async with db.execute("SELECT type, count(*) FROM nodes GROUP BY type") as cursor:
+                async for row in cursor:
+                    stats[f"{row[0]}_nodes"] = row[1]
+        return stats
