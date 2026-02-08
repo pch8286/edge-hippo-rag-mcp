@@ -189,12 +189,17 @@ class PPRRetriever:
             reset_vec[i] = val
             
 
-        ppr_scores = g.personalized_pagerank(
-            vertices=None,
-            damping=settings.PPR_DAMPING,
-            reset=reset_vec,
-            weights=g.es["weight"]
-        )
+        loop = asyncio.get_running_loop()
+        
+        def _run_pagerank():
+            return g.personalized_pagerank(
+                vertices=None,
+                damping=settings.PPR_DAMPING,
+                reset=reset_vec,
+                weights=g.es["weight"]
+            )
+
+        ppr_scores = await loop.run_in_executor(None, _run_pagerank)
         t_ppr = time.time()
         
         ranked = []
