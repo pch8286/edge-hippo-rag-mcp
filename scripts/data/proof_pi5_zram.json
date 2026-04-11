@@ -1,0 +1,25 @@
+{
+  "fixture_id": "pi5_crawling_zram_v2",
+  "optimize_synonyms_threshold": 0.6,
+  "docs": [
+    {
+      "id": "problem",
+      "text": "Raspberry Pi 5 can bog down when a local model overruns RAM."
+    },
+    {
+      "id": "bridge",
+      "text": "On Raspberry Pi 5, that kind of slowdown usually means memory pressure rather than a CPU bottleneck."
+    },
+    {
+      "id": "target",
+      "text": "Raspberry Pi 5 users often enable zram so compressed pages stay in memory before disk swap."
+    },
+    {
+      "id": "distractor",
+      "text": "Once swap traffic reaches storage, latency jumps sharply."
+    }
+  ],
+  "query": "What should I switch on when a Pi 5 starts crawling during on-device inference?",
+  "target_doc_id": "target",
+  "target_substring": "enable zram"
+}

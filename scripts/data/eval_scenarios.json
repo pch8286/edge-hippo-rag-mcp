@@ -1,0 +1,41 @@
+[
+    {
+        "id": "scenario_drift_1",
+        "text": "The Python programming language is widely used for data science and machine learning. Its simple syntax makes it ideal for beginners.",
+        "irrelevant_topics": [
+            "Ball python snake habitat",
+            "Python reptile care",
+            "Monty Python comedy sketch"
+        ],
+        "expected_queries": [
+            "What is Python used for?"
+        ]
+    },
+    {
+        "id": "scenario_drift_2",
+        "text": "The Jaguar is a large cat species native to the Americas. It is the third-largest feline after the tiger and the lion.",
+        "irrelevant_topics": [
+            "Jaguar F-Type sports car specs",
+            "Jaguar offensive line NFL",
+            "MacOS Jaguar version history"
+        ],
+        "expected_queries": [
+            "Where do Jaguars live?"
+        ]
+    },
+    {
+        "id": "scenario_complex_1",
+        "text": "Retrieval-Augmented Generation (RAG) enhances Large Language Models by providing external context. This reduces hallucinations. However, naive RAG suffers from context fragmentation and loss of global reasoning.",
+        "expected_queries": [
+            "How does RAG help LLMs?",
+            "What are the downsides of naive RAG?"
+        ]
+    },
+    {
+        "id": "scenario_linkage_1",
+        "text": "Artificial Intelligence (AI) simulates human intelligence. Machine Learning (ML) is a subset of AI. Deep Learning (DL) is a subset of ML using neural networks.",
+        "expected_queries": [
+            "Relationship between AI and ML"
+        ]
+    }
+]

@@ -1,0 +1,17 @@
+{
+    "name": "seahorse-rag-mcp",
+    "version": "0.1.0",
+    "description": "Seahorse RAG MCP with edge-optimized HippoRAG retrieval. Legacy edge-hippo-server alias remains available.",
+    "server": {
+        "type": "stdio",
+        "command": "uvx",
+        "args": [
+            "--from",
+            "git+https://github.com/pch8286/seahorse-rag-mcp.git",
+            "seahorse-server"
+        ]
+    },
+    "env": {
+        "OTEL_SDK_DISABLED": "true"
+    }
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "fixture_id": "pi5_crawling_zram_v2",
+    "optimize_synonyms_threshold": 0.6,
+    "docs": [
+      {
+        "id": "problem",
+        "text": "Raspberry Pi 5 can bog down when a local model overruns RAM."
+      },
+      {
+        "id": "bridge",
+        "text": "On Raspberry Pi 5, that kind of slowdown usually means memory pressure rather than a CPU bottleneck."
+      },
+      {
+        "id": "target",
+        "text": "Raspberry Pi 5 users often enable zram so compressed pages stay in memory before disk swap."
+      },
+      {
+        "id": "distractor",
+        "text": "Once swap traffic reaches storage, latency jumps sharply."
+      }
+    ],
+    "query": "What should I switch on when a Pi 5 starts crawling during on-device inference?",
+    "target_doc_id": "target",
+    "target_substring": "enable zram"
+  },
+  {
+    "fixture_id": "distro_python_vector_off_v1",
+    "optimize_synonyms_threshold": 0.6,
+    "docs": [
+      {
+        "id": "problem",
+        "text": "On Debian system Python, Seahorse may start without semantic lookup."
+      },
+      {
+        "id": "bridge",
+        "text": "Seahorse activates sqlite-vec through SQLite loadable extensions."
+      },
+      {
+        "id": "target",
+        "text": "If sqlite3.enable_load_extension is missing, the vector path cannot be turned on."
+      },
+      {
+        "id": "distractor",
+        "text": "Without vector search, Seahorse can still traverse phrase and passage links."
+      }
+    ],
+    "query": "Why does Seahorse stay in graph-only mode under distro Python?",
+    "target_doc_id": "target",
+    "target_substring": "sqlite3.enable_load_extension"
+  },
+  {
+    "fixture_id": "checkout_state_datadir_v1",
+    "optimize_synonyms_threshold": 0.6,
+    "docs": [
+      {
+        "id": "problem",
+        "text": "By default, Seahorse keeps its state under the current working directory."
+      },
+      {
+        "id": "bridge",
+        "text": "The database location is derived from DATA_DIR."
+      },
+      {
+        "id": "target",
+        "text": "Set DATA_DIR to move knowledge_graph.db out of the repo root."
+      },
+      {
+        "id": "distractor",
+        "text": "The default folder name is ./data."
+      }
+    ],
+    "query": "How do I stop Seahorse from leaving its state inside the checkout folder?",
+    "target_doc_id": "target",
+    "target_substring": "Set DATA_DIR"
+  }
+]
